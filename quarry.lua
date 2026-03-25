@@ -1,6 +1,9 @@
 os.loadAPI("inv")
 os.loadAPI("t")
 
+local HEARTBEAT_INTERVAL = 5 -- seconds
+local lastHeartbeat = os.clock()
+
 local x = 0
 local y = 0
 local z = 0
@@ -48,6 +51,7 @@ function out(s)
 	print(s2)
 	if USEMODEM then
 		rednet.broadcast(s2, "miningTurtle")
+		lastHeartbeat = os.clock()
 	end  
 end
 
@@ -215,6 +219,10 @@ function digLayer()
 			local msg = rednet.receive(1)
 			if msg ~= nil and string.find(msg, "return") ~= nil then
 				return USRINTERRUPT
+			end
+						-- heartbeat
+			if os.clock() - lastHeartbeat >= HEARTBEAT_INTERVAL then
+			out("Heartbeat: still mining")
 			end
 		end
 		errorcode = moveH()
