@@ -1,6 +1,8 @@
 os.loadAPI("inv")
 os.loadAPI("t")
 
+print("V1.0")
+
 local HEARTBEAT_INTERVAL = 5 -- seconds
 local lastHeartbeat = os.clock()
 
