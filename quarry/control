@@ -1,4 +1,11 @@
+-- Peripheral setup
 local monitor = peripheral.find("monitor")
+local manager = peripheral.find("chunkloader_manager")
+
+if not monitor then
+    error("No monitor found")
+end
+
 monitor.setTextScale(0.5)
 
 rednet.open("left")
@@ -10,7 +17,7 @@ local selected = nil
 local mapWidth = 30
 local sidebarX = mapWidth + 2
 
--- Draw map + sidebar
+-- Draw everything
 local function draw()
     monitor.setBackgroundColor(colors.black)
     monitor.clear()
@@ -20,7 +27,7 @@ local function draw()
     monitor.setTextColor(colors.white)
     monitor.write("== Turtle Control ==")
 
-    -- Draw map border
+    -- Map border
     for x = 1, mapWidth do
         monitor.setCursorPos(x,2)
         monitor.write("-")
@@ -44,30 +51,31 @@ local function draw()
         end
     end
 
-    -- Sidebar
+    -- Sidebar header
     monitor.setCursorPos(sidebarX, 2)
     monitor.setTextColor(colors.cyan)
     monitor.write("Turtles:")
 
     local line = 3
+
     for id, data in pairs(turtles) do
         monitor.setCursorPos(sidebarX, line)
 
         local age = os.clock() - data.lastSeen
-        local statusColor = age > 10 and colors.red or colors.white
+        local color = age > 10 and colors.red or colors.white
 
-        monitor.setTextColor(statusColor)
+        monitor.setTextColor(color)
         monitor.write(id .. " (" .. data.x .. "," .. data.y .. "," .. data.z .. ")")
 
         line = line + 1
     end
 
-    -- Selected turtle info
+    -- Selected turtle details
     if selected and turtles[selected] then
         local t = turtles[selected]
 
-        monitor.setCursorPos(sidebarX, line + 1)
         monitor.setTextColor(colors.yellow)
+        monitor.setCursorPos(sidebarX, line + 1)
         monitor.write("Selected: " .. selected)
 
         monitor.setCursorPos(sidebarX, line + 2)
@@ -77,20 +85,28 @@ local function draw()
         monitor.write("Z: " .. t.z)
 
         -- Buttons
-        monitor.setCursorPos(sidebarX, line + 5)
         monitor.setBackgroundColor(colors.blue)
+        monitor.setCursorPos(sidebarX, line + 5)
         monitor.setTextColor(colors.white)
         monitor.write(" RETURN ")
 
-        monitor.setCursorPos(sidebarX, line + 7)
         monitor.setBackgroundColor(colors.orange)
+        monitor.setCursorPos(sidebarX, line + 7)
         monitor.write(" UPDATE ")
+
+        monitor.setBackgroundColor(colors.purple)
+        monitor.setCursorPos(sidebarX, line + 9)
+        monitor.write(" WAKE ")
+
+        monitor.setBackgroundColor(colors.lime)
+        monitor.setCursorPos(sidebarX, line + 11)
+        monitor.write(" LOAD ")
 
         monitor.setBackgroundColor(colors.black)
     end
 end
 
--- Receive turtle data
+-- Receive turtle updates
 local function receive()
     while true do
         local id, msg, protocol = rednet.receive()
@@ -107,7 +123,7 @@ local function handleTouch()
     while true do
         local event, side, x, y = os.pullEvent("monitor_touch")
 
-        -- Select turtle by clicking map
+        -- Select turtle
         for id, data in pairs(turtles) do
             local tx = math.floor(data.x) + 15
             local ty = math.floor(data.y) + 5
@@ -117,15 +133,22 @@ local function handleTouch()
             end
         end
 
-        -- Button clicks
+        -- Buttons
         if selected then
             local baseLine = 10
 
             if x >= sidebarX and x <= sidebarX + 10 then
                 if y == baseLine then
                     rednet.send(selected, "return")
+
                 elseif y == baseLine + 2 then
                     rednet.send(selected, "update")
+
+                elseif y == baseLine + 4 and manager then
+                    manager.wake(selected)
+
+                elseif y == baseLine + 6 and manager then
+                    manager.setRadius(selected, 1)
                 end
             end
         end
