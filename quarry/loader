@@ -1,0 +1,74 @@
+os.loadAPI("t")
+
+local chunk = peripheral.find("chunkloader")
+if not chunk then error("No chunkloader peripheral found") end
+chunk.setRadius(1)
+
+local modem = peripheral.find("modem")
+if modem then rednet.open("right") end
+
+local miningPos = {x=0, y=0, z=0}
+
+-- Listen to mining turtle
+local function receivePos()
+    while true do
+        local id, msg, proto = rednet.receive()
+        if proto == "miningTurtle" and type(msg) == "table" then
+            miningPos = {x=msg.x, y=msg.y, z=msg.z}
+        end
+    end
+end
+
+-- Calculate simple distance in 3D
+local function distance(a, b)
+    return math.abs(a.x - b.x) + math.abs(a.y - b.y) + math.abs(a.z - b.z)
+end
+
+-- Move toward mining turtle
+local function follow()
+    local localPos = {x=0, y=0, z=0} -- relative to start
+
+    while true do
+        if miningPos then
+            -- Move in Z axis first
+            while localPos.z < miningPos.z do
+                t.up()
+                localPos.z = localPos.z + 1
+            end
+            while localPos.z > miningPos.z do
+                t.down()
+                localPos.z = localPos.z - 1
+            end
+
+            -- Move in Y axis
+            while localPos.y < miningPos.y do
+                t.fw()
+                localPos.y = localPos.y + 1
+            end
+            while localPos.y > miningPos.y do
+                t.back()
+                localPos.y = localPos.y - 1
+            end
+
+            -- Move in X axis
+            while localPos.x < miningPos.x do
+                t.turnRight()
+                t.fw()
+                t.turnLeft()
+                localPos.x = localPos.x + 1
+            end
+            while localPos.x > miningPos.x do
+                t.turnRight()
+                t.bw()
+                t.turnLeft()
+                localPos.x = localPos.x - 1
+            end
+        end
+
+        -- Keep chunk loaded around current position
+        chunk.setRadius(1)
+        sleep(2)
+    end
+end
+
+parallel.waitForAny(receivePos, follow)
