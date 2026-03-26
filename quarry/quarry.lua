@@ -1,7 +1,7 @@
 os.loadAPI("inv")
 os.loadAPI("t")
 
-print("V1.0")
+print("V1.1")
 
 local HEARTBEAT_INTERVAL = 5 -- seconds
 local lastHeartbeat = os.clock()
@@ -52,7 +52,14 @@ function out(s)
 			
 	print(s2)
 	if USEMODEM then
-		rednet.broadcast(s2, "miningTurtle")
+		rednet.broadcast({
+    		type = "status",
+    		x = x,
+    		y = y,
+    		z = z,
+    		status = s,
+    		time = os.clock()
+		}, "miningTurtle")
 		lastHeartbeat = os.clock()
 	end  
 end
