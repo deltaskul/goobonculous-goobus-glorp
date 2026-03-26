@@ -1,6 +1,6 @@
 -- rednet.broadcast("update") triggers the update
 
-local url = ""
+local url = "https://raw.githubusercontent.com/deltaskul/goobonculous-goobus-glorp/refs/heads/main/quarry/quarry.lua"
 local programName = "quarry"
 
 rednet.open("left")
