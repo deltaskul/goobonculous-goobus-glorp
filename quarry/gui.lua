@@ -65,6 +65,34 @@ local function initChunkloader()
     end
 end
 
+-- Save the full registry to disk so it survives restarts.
+local function saveChunkRegistry()
+    local f = fs.open(CHUNK_FILE, "w")
+    if not f then return end
+    for key in pairs(chunkRegistry) do
+        f.writeLine(key)
+    end
+    f.close()
+end
+
+-- Load registry from disk and re-issue loadChunk for every entry.
+local function loadChunkRegistry()
+    if not fs.exists(CHUNK_FILE) then return end
+    local f = fs.open(CHUNK_FILE, "r")
+    if not f then return end
+    local line = f.readLine()
+    while line do
+        local cx, cz = line:match("^(-?%d+),(-?%d+)$")
+        if cx and cz then
+            cx, cz = tonumber(cx), tonumber(cz)
+            chunkRegistry[cx .. "," .. cz] = true
+            clLoad(cx, cz)
+        end
+        line = f.readLine()
+    end
+    f.close()
+end
+
 -- Low-level: tell the peripheral to load one chunk.
 local function clLoad(cx, cz)
     if not chunkloader then return false end
@@ -128,32 +156,7 @@ local function checkStaleChunks()
         end
     end
 end
-local function saveChunkRegistry()
-    local f = fs.open(CHUNK_FILE, "w")
-    if not f then return end
-    for key in pairs(chunkRegistry) do
-        f.writeLine(key)
-    end
-    f.close()
-end
 
--- Load registry from disk and re-issue loadChunk for every entry.
-local function loadChunkRegistry()
-    if not fs.exists(CHUNK_FILE) then return end
-    local f = fs.open(CHUNK_FILE, "r")
-    if not f then return end
-    local line = f.readLine()
-    while line do
-        local cx, cz = line:match("^(-?%d+),(-?%d+)$")
-        if cx and cz then
-            cx, cz = tonumber(cx), tonumber(cz)
-            chunkRegistry[cx .. "," .. cz] = true
-            clLoad(cx, cz)
-        end
-        line = f.readLine()
-    end
-    f.close()
-end
 
 -- Public: register and load a chunk, persisting it.
 local function ensureChunkLoaded(cx, cz)
