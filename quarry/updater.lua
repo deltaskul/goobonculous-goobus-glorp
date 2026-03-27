@@ -12,6 +12,7 @@
 local MODEM_SIDE  = "left"
 local PROTOCOL    = "miningTurtle"
 local PROGRAM     = "quarry"
+local ARGS        = "-m"             -- always passed to quarry
 local UPDATE_URL  = "https://raw.githubusercontent.com/deltaskul/goobonculous-goobus-glorp/refs/heads/main/quarry/quarry.lua"
 
 rednet.open(MODEM_SIDE)
@@ -35,7 +36,7 @@ local function runMiner()
 
         parallel.waitForAny(
             function()
-                shell.run(PROGRAM)
+                shell.run(PROGRAM, ARGS)
                 done = true
             end,
             function()
