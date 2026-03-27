@@ -24,6 +24,7 @@ local ORIGIN_X = 0   -- <-- CHANGE THIS per turtle
 local ORIGIN_Z = 0   -- <-- CHANGE THIS per turtle
 
 -- ── Config ───────────────────────────────────────────────────
+local MODEM_SIDE = "left"    -- must match updater.lua; modem already open when run via updater
 local HEARTBEAT_INTERVAL = 5
 local lastHeartbeat = os.clock()
 
@@ -318,9 +319,10 @@ function mainloop()
 end
 
 -- ── Entry point ──────────────────────────────────────────────
-if USEMODEM then
-    rednet.open("left")
-end
+-- Note: rednet is already open via updater.lua.
+-- If running quarry standalone (not via updater), pass -m and
+-- uncomment the two lines below.
+-- if USEMODEM then rednet.open(MODEM_SIDE) end
 
 out("\n\n\n-- WELCOME TO THE MINING TURTLE --\n\n")
 
@@ -335,6 +337,4 @@ while true do
     end
 end
 
-if USEMODEM then
-    rednet.close("left")
-end
+-- if USEMODEM then rednet.close(MODEM_SIDE) end
