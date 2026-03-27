@@ -78,7 +78,56 @@ local function clLoad(cx, cz)
     return ok
 end
 
--- Save the full registry to disk so it survives restarts.
+-- Low-level: unload one chunk.
+local function clUnload(cx, cz)
+    if not chunkloader then return end
+    pcall(function()
+        if chunkloader.unloadChunk then
+            chunkloader.unloadChunk(cx, cz)
+        elseif chunkloader.removeChunk then
+            chunkloader.removeChunk(cx, cz)
+        end
+    end)
+end
+
+-- Check whether any other active turtle still needs a given chunk,
+-- so we don't unload a chunk two turtles happen to share.
+local function chunkStillNeeded(cx, cz, excludeId)
+    local key = cx .. "," .. cz
+    local now = os.clock()
+    for id, t in pairs(turtles) do
+        if id ~= excludeId
+                and (t.chunkX .. "," .. t.chunkZ) == key
+                and now - (t.time or 0) <= HEARTBEAT_TIMEOUT then
+            return true
+        end
+    end
+    return false
+end
+
+-- Unload a chunk and remove it from the registry, unless another
+-- active turtle is still in that chunk.
+local function releaseChunk(cx, cz, excludeId)
+    if chunkStillNeeded(cx, cz, excludeId) then return end
+    local key = cx .. "," .. cz
+    if chunkRegistry[key] then
+        chunkRegistry[key] = nil
+        saveChunkRegistry()
+        clUnload(cx, cz)
+    end
+end
+
+-- Sweep all known turtles; unload chunks for those that have gone LOST.
+-- Called on every periodic timer tick.
+local function checkStaleChunks()
+    local now = os.clock()
+    for id, t in pairs(turtles) do
+        if t.chunkX and t.chunkZ
+                and now - (t.time or 0) > HEARTBEAT_TIMEOUT then
+            releaseChunk(t.chunkX, t.chunkZ, id)
+        end
+    end
+end
 local function saveChunkRegistry()
     local f = fs.open(CHUNK_FILE, "w")
     if not f then return end
@@ -505,13 +554,23 @@ local function handleMessage(senderId, msg)
     t.label  = msg.label or t.label or ("T" .. senderId)
 
     -- Chunk coordinates from message, or compute from x/z
+    local newChunkX, newChunkZ
     if msg.chunkX and msg.chunkZ then
-        t.chunkX = msg.chunkX
-        t.chunkZ = msg.chunkZ
+        newChunkX = msg.chunkX
+        newChunkZ = msg.chunkZ
     else
-        t.chunkX = math.floor((msg.x or 0) / 16)
-        t.chunkZ = math.floor((msg.z or 0) / 16)
+        newChunkX = math.floor((msg.x or 0) / 16)
+        newChunkZ = math.floor((msg.z or 0) / 16)
     end
+
+    -- If the turtle has moved into a different chunk, release the old one.
+    if t.chunkX and t.chunkZ
+            and (t.chunkX ~= newChunkX or t.chunkZ ~= newChunkZ) then
+        releaseChunk(t.chunkX, t.chunkZ, senderId)
+    end
+
+    t.chunkX = newChunkX
+    t.chunkZ = newChunkZ
 
     turtles[senderId] = t
 
@@ -669,6 +728,7 @@ local function main()
             inputBuf = inputBuf .. p1
 
         elseif event == "timer" then
+            checkStaleChunks()
             redraw()
         end
 
