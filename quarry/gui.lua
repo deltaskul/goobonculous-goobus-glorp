@@ -49,9 +49,14 @@ local running    = true
 local lastDraw   = 0
 
 -- ── Chunkloader helpers ──────────────────────────────────────
+local CHUNK_FILE = "chunks.txt"   -- persisted chunk registry
+
+-- Registry: { [cx..","..cz] = true }
+-- Lets us re-load all known turtle chunks on GUI startup,
+-- before any heartbeat arrives (cold-start / cross-dimension fix).
+local chunkRegistry = {}
+
 local function initChunkloader()
-    -- peripheral.getNames() returns every directly-attached and
-    -- wired-network-connected peripheral in CC:Tweaked.
     for _, name in ipairs(peripheral.getNames()) do
         if string.find(peripheral.getType(name) or "", "chunkloader") then
             chunkloader = peripheral.wrap(name)
@@ -60,17 +65,70 @@ local function initChunkloader()
     end
 end
 
-local function ensureChunkLoaded(cx, cz)
-    if not chunkloader then return end
-    pcall(function()
-        -- CCChunkloader API: loadChunk(x, z) or addChunk(x, z)
-        -- Try both common API names
+-- Low-level: tell the peripheral to load one chunk.
+local function clLoad(cx, cz)
+    if not chunkloader then return false end
+    local ok = pcall(function()
         if chunkloader.loadChunk then
             chunkloader.loadChunk(cx, cz)
         elseif chunkloader.addChunk then
             chunkloader.addChunk(cx, cz)
         end
     end)
+    return ok
+end
+
+-- Save the full registry to disk so it survives restarts.
+local function saveChunkRegistry()
+    local f = fs.open(CHUNK_FILE, "w")
+    if not f then return end
+    for key in pairs(chunkRegistry) do
+        f.writeLine(key)
+    end
+    f.close()
+end
+
+-- Load registry from disk and re-issue loadChunk for every entry.
+local function loadChunkRegistry()
+    if not fs.exists(CHUNK_FILE) then return end
+    local f = fs.open(CHUNK_FILE, "r")
+    if not f then return end
+    local line = f.readLine()
+    while line do
+        local cx, cz = line:match("^(-?%d+),(-?%d+)$")
+        if cx and cz then
+            cx, cz = tonumber(cx), tonumber(cz)
+            chunkRegistry[cx .. "," .. cz] = true
+            clLoad(cx, cz)
+        end
+        line = f.readLine()
+    end
+    f.close()
+end
+
+-- Public: register and load a chunk, persisting it.
+local function ensureChunkLoaded(cx, cz)
+    local key = cx .. "," .. cz
+    if not chunkRegistry[key] then
+        chunkRegistry[key] = true
+        saveChunkRegistry()
+    end
+    clLoad(cx, cz)
+end
+
+-- Register a chunk manually from the terminal.
+-- Usage: type  register <chunkX> <chunkZ>  in the computer shell.
+-- This seeds the registry before the turtle has been heard from.
+local function registerChunkManual(cx, cz)
+    cx, cz = tonumber(cx), tonumber(cz)
+    if not cx or not cz then
+        print("Usage: register <chunkX> <chunkZ>")
+        print("Example: register -12 7")
+        return
+    end
+    ensureChunkLoaded(cx, cz)
+    print(string.format("Registered chunk %d, %d — %s",
+        cx, cz, chunkloader and "loaded." or "saved (no chunkloader found)."))
 end
 
 -- ── Monitor setup ────────────────────────────────────────────
@@ -552,19 +610,30 @@ local function main()
     -- Open rednet
     rednet.open(MODEM_SIDE)
 
+    -- Re-load all previously known turtle chunks immediately on startup.
+    -- This is the fix for the cold-start / cross-dimension problem:
+    -- chunks are loaded before any heartbeat arrives.
+    loadChunkRegistry()
+
     print("GUI running. Monitor: " .. mW .. "x" .. mH)
     if chunkloader then
-        print("Chunk loader found and active.")
+        local count = 0
+        for _ in pairs(chunkRegistry) do count = count + 1 end
+        print("Chunk loader active. " .. count .. " chunk(s) registered.")
+        print("To pre-register a chunk: type  register <cx> <cz>  and press Enter.")
     else
         print("No chunk loader found. Chunks won't be force-loaded.")
+        print("Connect a CCChunkloader via wired modem and restart.")
     end
-    print("Press Q to quit.")
+    print("Press Q to quit, or type 'register <cx> <cz>' to seed a chunk.")
+
+    -- Terminal input buffer for typed commands (register, etc.)
+    local inputBuf = ""
 
     redraw()
 
     while running do
-        -- Redraw every 2 seconds minimum, and after every event
-        local event, p1, p2, p3, p4 = os.pullEvent()
+        local event, p1, p2, p3 = os.pullEvent()
 
         if event == "rednet_message" then
             local senderId, msg, protocol = p1, p2, p3
@@ -578,15 +647,31 @@ local function main()
             redraw()
 
         elseif event == "key" then
-            handleKey(p1)
+            if p1 == keys.enter then
+                -- Process typed command from terminal
+                local parts = {}
+                for word in inputBuf:gmatch("%S+") do parts[#parts+1] = word end
+                if parts[1] == "register" then
+                    registerChunkManual(parts[2], parts[3])
+                elseif parts[1] == "q" or parts[1] == "quit" then
+                    running = false
+                end
+                inputBuf = ""
+            elseif p1 == keys.backspace then
+                inputBuf = inputBuf:sub(1, -2)
+            else
+                handleKey(p1)
+            end
             redraw()
 
+        elseif event == "char" then
+            -- Build terminal input buffer for typed commands
+            inputBuf = inputBuf .. p1
+
         elseif event == "timer" then
-            -- Periodic redraw for clock and LOST detection
             redraw()
         end
 
-        -- Schedule periodic redraw every 2s
         if os.clock() - lastDraw >= 2 then
             os.startTimer(0)
         end
